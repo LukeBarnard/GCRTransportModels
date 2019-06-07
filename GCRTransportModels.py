@@ -1,9 +1,6 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy import sparse
-from scipy import integrate
 import scipy.constants as constants
-
 import astropy.units as u
 
 
@@ -17,32 +14,33 @@ class GetProton:
         http://www.geomagsphere.org/index.php/rigidity-energy-conversion
         https://ccmc.gsfc.nasa.gov/pub/modelweb/cosmic_rays/cutoff_rigidity_sw/rpt-6.doc
         """
-        self.c = constants.c * (u.m/u.s)
+        self.c = constants.c * (u.m / u.s)
         self.M = constants.proton_mass * u.kg
         self.q = constants.e * u.coulomb
-        self.Em = ((self.M * self.c**2)).to('MeV') # rest mass in MeV
-        self.T = kinetic_energy # Kinetic energy input - can be an array of kinetic energies
-        self.Et = self.T + self.Em # Total energy 
+        self.Em = (self.M * self.c**2).to('MeV')  # rest mass in MeV
+        self.T = kinetic_energy  # Kinetic energy input - can be an array of kinetic energies
+        self.Et = self.T + self.Em  # Total energy
         self.momentum = np.sqrt((self.Et**2)-(self.Em**2)) / self.c
         self.beta = np.sqrt(1 - (self.Em/self.Et)**2)
-        self.rigidity = (np.sqrt((self.T**2) + (2 * self.T * self.Em)) / self.q).to('GV') # eqn 1 from geomagsphere 
+        self.rigidity = (np.sqrt((self.T**2) + (2 * self.T * self.Em)) / self.q).to('GV')  # eqn 1 from geomagsphere
         self.alpha = (self.T + 2*self.Em) / (self.T + self.Em)
         self.dalpha_dT = -self.Em / ((self.T + self.Em)**2)
         return
 
+
 class GCR1DCrankNicolson:
-    
+
     def __init__(self):
         # Create unit for differential intensity flux to be used throughout model.
         self.differential_intensity_unit = 1/(u.m**2 * u.s * u.steradian * u.MeV)
         self.setup_model_domain()
-        
+
     def setup_model_domain(self):
         """
         Define the spatial and energy coordinates of the model.
         """
         # Spatial domain, in km. Use GU71 limits of 1 sol Rad and 10 AU.
-        #Use astropy units to convert between solar rad and AU.
+        # Use astropy units to convert between solar rad and AU.
         xmin = (1.0 * u.solRad).to('km').value
         xmax = (100.0 * u.AU).to('km').value 
         Nx = 500
@@ -55,7 +53,7 @@ class GCR1DCrankNicolson:
         
         # Energy domain in MeV, using GU71 substitution (eq.3.1 inverted.)
         # Go from 1MeV - 1e4MeV using variable dT step given by the GU71 substitution.
-        proton = GetProton() #Need proton rest mass for working out energy grid.
+        proton = GetProton() # Need proton rest mass for working out energy grid.
         Tmin = 1e0 * u.MeV
         Tmax = 1e5 * u.MeV
         smin = np.arctan(np.sqrt(2*Tmin/proton.Em))
@@ -75,7 +73,7 @@ class GCR1DCrankNicolson:
         self.solar_wind_profile()
         self.compute_chi()
         return
-    
+
     def boundary_profile(self, boundary_type):
         """
         Function to compute the Dirichlet boundary condtion for the outer spatial boundary. Input argument boundary_type
@@ -89,7 +87,7 @@ class GCR1DCrankNicolson:
             profile = 1.0 * np.ones(self.T.shape) * self.differential_intensity_unit
         
         elif boundary_type == "GAUSSIAN":
-            arg = -280.0 * ((self.T/(280.0*u.MeV)) - 1.0)**2
+            arg = -280.0 * ((self.T / (280.0 * u.MeV)) - 1.0)**2
             profile = 1.0 * np.exp(arg) * self.differential_intensity_unit
 
         elif boundary_type == "WEBBER":
@@ -124,8 +122,7 @@ class GCR1DCrankNicolson:
 
     def usoskin_lis(self):
         """
-        Function to compute the Usoskin et al 2011 LIS.
-        Equation 2 of DOI:10.1029/2010JA016105
+        Function to compute the Usoskin et al 2011 LIS. Equation 2 of DOI:10.1029/2010JA016105
         Article states that this is the Burger 2000 LIS, but Burger 2000 provides a different functional form.
         Note, this form only works for protons. 
         T = Kinetic energy (GeV)
@@ -153,17 +150,17 @@ class GCR1DCrankNicolson:
         dkappa_dr = 0.0 * np.ones(self.x.shape) * (u.km / u.s)
         return kappa, dkappa_dr
     
-    def diffusion_CM04(self, proton):
+    def diffusion_cm04(self, proton):
         """
         Compute diffusion coefficeint as per CM04.
         In this instance kappa is independent of r, so dkappa_dr = 0.
         """
-        A = 1.0 * u.cm**2 / (u.s * u.GV) #cm04 A=4.38e22
+        A = 4.38 * u.cm**2 / (u.s * u.GV)
         kappa = (A * proton.beta * proton.rigidity).to(u.km**2 / u.s) * np.ones(self.x.shape)
         dkappa_dr = 0.0 * np.ones(self.x.shape) * (u.km / u.s)
         return kappa, dkappa_dr
     
-    def diffusion_GU71(self, proton):
+    def diffusion_gu71(self, proton):
         """
         Compute diffusion coefficeint as per GU71.
         """
@@ -174,17 +171,15 @@ class GCR1DCrankNicolson:
     
     def diffusion_coefficient(self, proton):
         """
-        Return the diffusion coefficient and it's spatiral gradient corresponding to the diffusion type specified in
+        Return the diffusion coefficient and it's spatial gradient corresponding to the diffusion type specified in
         self.
         """
-        
         if self.diffusion_type == "simple":
             kappa, dkappa_dr = self.diffusion_simple()
         elif self.diffusion_type == "CM04":
             kappa, dkappa_dr = self.diffusion_CM04(proton)
         elif self.diffusion_type == "GU71":
             kappa, dkappa_dr = self.diffusion_GU71(proton)
-            
         return kappa, dkappa_dr
     
     def solar_wind_profile(self):
@@ -207,67 +202,66 @@ class GCR1DCrankNicolson:
         self.chi = (2.0 * self.V / self.x) + self.dV_dr
         return
     
-    def compute_p_coefficient(self, proton, dT):
-        p = self.chi * proton.alpha * proton.T
-        p = (p / dT)
-        return p
+    def compute_a_coefficient(self, proton, dT):
+        a = self.chi * proton.alpha * proton.T
+        a = (a / dT)
+        return a
     
-    def compute_f_coefficient(self, proton):
+    def compute_b_coefficient(self, proton):
         kappa, dkappa_dr = self.diffusion_coefficient(proton)
-        f = -kappa / (2.0 * self.dx**2)
-        return f
+        b = -kappa / (2.0 * self.dx**2)
+        return b
     
-    def compute_g_coefficient(self, proton):
+    def compute_c_coefficient(self, proton):
         kappa, dkappa_dr = self.diffusion_coefficient(proton)
-        g = self.V - (2.0 * kappa / self.x) - dkappa_dr
-        g = g / (4.0 * self.dx)
-        return g
+        c = self.V - (2.0 * kappa / self.x) - dkappa_dr
+        c = c / (4.0 * self.dx)
+        return c
     
-    def compute_q_coefficient(self, proton):
-        q = self.chi - (self.chi / 3.0) * (proton.alpha + proton.T * proton.dalpha_dT)
-        return q
+    def compute_d_coefficient(self, proton):
+        d = self.chi - (self.chi / 3.0) * (proton.alpha + proton.T * proton.dalpha_dT)
+        return d
     
-    def compute_matrices(self, proton, dT, d1, d2):
+    def compute_matrices(self, proton, dT, bv1, bv2):
         
-        p = self.compute_p_coefficient(proton, dT)
-        f = self.compute_f_coefficient(proton)
-        g = self.compute_g_coefficient(proton)
-        q = self.compute_q_coefficient(proton)
+        a = self.compute_a_coefficient(proton, dT)
+        b = self.compute_b_coefficient(proton)
+        c = self.compute_c_coefficient(proton)
+        d = self.compute_d_coefficient(proton)
                   
         # Matrix A
-        main_diag = p + 2.0*f
+        main_diag = a + 2.0*b
         # Update inner Neumann boundary for dUdx=0
-        main_diag[0] = p[0] + f[0] + g[0]
+        main_diag[0] = a[0] + b[0] + c[0]
         
-        off_diag_up = -f - g
-        off_diag_dn = -f + g
+        off_diag_up = -b - c
+        off_diag_dn = -b + c
         diagonals = [main_diag, off_diag_dn, off_diag_up]
         # This command destroys the unit. manhandle it.
-        A = sparse.diags(diagonals, [0,-1,1], shape=(self.x.size, self.x.size)).toarray()
-        A = A * main_diag.unit
+        F = sparse.diags(diagonals, [0, -1, 1], shape=(self.x.size, self.x.size)).toarray()
+        F = F * main_diag.unit
         
         # Matrix B
-        main_diag = p - 2.0*f + q
+        main_diag = a - 2.0*b + d
         # Update inner Neumann boundary for dUdx=0
-        main_diag[0] = p[0] - f[0] - g[0] + q[0]
+        main_diag[0] = a[0] - b[0] - c[0] + d[0]
         
-        off_diag_up = f + g
-        off_diag_dn = f - g
+        off_diag_up = b + c
+        off_diag_dn = b - c
         diagonals = [main_diag, off_diag_dn, off_diag_up]
         # This command destroys the unit, manhandle it.
-        B = sparse.diags(diagonals, [0,-1,1], shape=(self.x.size, self.x.size)).toarray()
-        B = B * main_diag.unit
+        G = sparse.diags(diagonals, [0, -1, 1], shape=(self.x.size, self.x.size)).toarray()
+        G = G * main_diag.unit
         
         # Compute boundary condition vectors for outer Dirichlet boundary.
-        BC1 = np.zeros(self.x.shape) * self.differential_intensity_unit * B.unit
-        BC1[-1] = (f[-1] + g[-1]) * d1
+        BC1 = np.zeros(self.x.shape) * self.differential_intensity_unit * G.unit
+        BC1[-1] = (b[-1] + c[-1]) * bv1
         
-        BC2 = np.zeros(self.x.shape) * self.differential_intensity_unit * B.unit
-        BC2[-1] = (f[-1] + g[-1]) * d2
-        return A, B, BC1, BC2
-    
-    
-    def solve(self, boundary="guassian", diffusion="simple"):
+        BC2 = np.zeros(self.x.shape) * self.differential_intensity_unit * G.unit
+        BC2[-1] = (b[-1] + c[-1]) * bv2
+        return F, G, BC1, BC2
+
+    def solve(self, boundary_type="gaussian", diffusion_type="simple"):
         
         # Update diffusion type, so diffusion_coefficient knows which type to call.
         self.diffusion_type = diffusion_type
@@ -279,22 +273,22 @@ class GCR1DCrankNicolson:
         self.U[:, -1] = self.boundary_profile(boundary_type=boundary_type)
         
         # Add in initial condition at high energy/low modulation.
-        self.U[0,1:-1] += self.U[0,-1]
+        self.U[0, 1:-1] += self.U[0, -1]
         
         for j, dT in enumerate(self.dT):
             
             jn = j + 1
             # Get a proton at this energy for computing the diffusion coefficient and enrgy terms.
-            proton = GetProton(kinetic_energy = self.T[j])
+            proton = GetProton(kinetic_energy=self.T[j])
             # Get the Dirichlet boundary conditions 
             d1 = self.U[j, -1]
             d2 = self.U[jn, -1]
 
             # Compute diffusion matrices 
-            A, B, BC1, BC2 = self.compute_matrices(proton, dT, d1, d2)
+            F, G, BC1, BC2 = self.compute_matrices(proton, dT, d1, d2)
             # Solve for this energy
             # Numpy matmul and linalg seem to fuckup the units. Manhandle them.
-            b = np.matmul(B.value, np.array(self.U[j, 1:-1])) + BC1.value + BC2.value    
-            self.U[jn, 1:-1] = np.linalg.solve(A.value, b) * self.U.unit
+            g = np.matmul(G.value, np.array(self.U[j, 1:-1])) + BC1.value + BC2.value
+            self.U[jn, 1:-1] = np.linalg.solve(F.value, g) * self.U.unit
             
         return
