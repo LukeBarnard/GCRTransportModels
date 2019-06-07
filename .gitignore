@@ -1,0 +1,5 @@
+# Compiled python modules.
+*.pyc
+*.ipynb
+/.ipynb_checkpoints
+*.pdf
