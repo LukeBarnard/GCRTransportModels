@@ -30,20 +30,35 @@ class GetProton:
 
 class GCR1DCrankNicolson:
 
-    def __init__(self):
+    def __init__(self, spatial_res='medium', energy_res='medium'):
         # Create unit for differential intensity flux to be used throughout model.
         self.differential_intensity_unit = 1/(u.m**2 * u.s * u.steradian * u.MeV)
-        self.setup_model_domain()
+        self.setup_model_domain(spatial_res, energy_res)
 
-    def setup_model_domain(self):
+    def setup_model_domain(self, spatial_res, energy_res):
         """
         Define the spatial and energy coordinates of the model.
         """
+
+        if spatial_res == "low":
+            Nx = 200
+        elif spatial_res == "medium":
+            Nx = 500
+        elif spatial_res == "high":
+            Nx = 1000
+
+        if energy_res == "low":
+            Ns = 200
+        elif energy_res == "medium":
+            Ns = 500
+        elif energy_res == "high":
+            Ns = 1000
+
         # Spatial domain, in km. Use GU71 limits of 1 sol Rad and 10 AU.
         # Use astropy units to convert between solar rad and AU.
         xmin = (1.0 * u.solRad).to('km').value
         xmax = (100.0 * u.AU).to('km').value 
-        Nx = 500
+
         # Setup spatial grid, including boundary points.
         self.xb, self.dx = np.linspace(xmin, xmax, Nx, retstep=True)
         self.xb = self.xb * u.km
@@ -58,7 +73,6 @@ class GCR1DCrankNicolson:
         Tmax = 1e5 * u.MeV
         smin = np.arctan(np.sqrt(2*Tmin/proton.Em))
         smax = np.arctan(np.sqrt(2*Tmax/proton.Em))
-        Ns = 500
         self.s, self.ds = np.linspace(smax.value, smin.value, Ns, retstep=True)
         self.T = (proton.Em / 2.0) * np.tan(self.s)**2 
         self.dT = np.diff(self.T)
@@ -78,23 +92,23 @@ class GCR1DCrankNicolson:
         """
         Function to compute the Dirichlet boundary condtion for the outer spatial boundary. Input argument boundary_type
         should string describing type of boundary. Valid terms are constant, gaussian, WEBBER, and USOSKIN. 
-        CONSTANT = a constant boundary with Uhp = 1.0 for all energies.
-        GAUSSIAN = a guassian boundary centered at 280MeV, as used in Fig 1 of GU71.
-        WEBBER = The local interstellar GCR spectrum of Webber and Lockwood 2001.
-        USOSKIN = The local interstellar GCR spectrum of Usoskin et al 2011.
+        constant = a constant boundary with Uhp = 1.0 for all energies.
+        gaussian = a guassian boundary centered at 280MeV, as used in Fig 1 of GU71.
+        webber = The local interstellar GCR spectrum of Webber and Lockwood 2001.
+        usoskin = The local interstellar GCR spectrum of Usoskin et al 2011.
         """
-        if boundary_type == "CONSTANT":
+        if boundary_type == "constant":
             profile = 1.0 * np.ones(self.T.shape) * self.differential_intensity_unit
         
-        elif boundary_type == "GAUSSIAN":
+        elif boundary_type == "gaussian":
             arg = -280.0 * ((self.T / (280.0 * u.MeV)) - 1.0)**2
             profile = 1.0 * np.exp(arg) * self.differential_intensity_unit
 
-        elif boundary_type == "WEBBER":
+        elif boundary_type == "webber":
             LIS = self.webber_lis()
             profile = LIS.to(self.differential_intensity_unit)
         
-        elif boundary_type =="USOSKIN":
+        elif boundary_type =="usoskin":
             LIS = self.usoskin_lis()
             profile = LIS.to(self.differential_intensity_unit)
         else:
@@ -176,9 +190,9 @@ class GCR1DCrankNicolson:
         """
         if self.diffusion_type == "simple":
             kappa, dkappa_dr = self.diffusion_simple()
-        elif self.diffusion_type == "CM04":
+        elif self.diffusion_type == "cm04":
             kappa, dkappa_dr = self.diffusion_CM04(proton)
-        elif self.diffusion_type == "GU71":
+        elif self.diffusion_type == "gu71":
             kappa, dkappa_dr = self.diffusion_GU71(proton)
         return kappa, dkappa_dr
     
